@@ -1,0 +1,19 @@
+{
+  "source_start": "2021-01-01",
+  "evaluation_start": "2023-01-01",
+  "end_exclusive": "2026-07-11",
+  "router": "fixed_empirical_research",
+  "allow_retrospective": true,
+  "execution_mode": "same_open_proxy",
+  "state_policy": "shadow",
+  "barrier_mode": "absolute_residual",
+  "allow_month_series": true,
+  "allow_retro_specs": true,
+  "integer_lots": false,
+  "cash_buffer": 0.0,
+  "f25_coverage": "registry",
+  "f25_missing": "neutral_keep",
+  "f25_warmup": "reject",
+  "cost_bps_values": [0, 1, 2],
+  "primary_cost_bps": 2
+}
