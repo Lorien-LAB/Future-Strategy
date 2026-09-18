@@ -1,1 +1,5 @@
+Calendar Spread Arbitrage
 
+The runnable package is located directly at repository root: backtest/
+Start with README.md, AGENTS.md and backtest/README.md.
+This former empty placeholder is not a second implementation directory.

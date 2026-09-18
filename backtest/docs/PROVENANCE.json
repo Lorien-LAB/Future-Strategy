@@ -1,0 +1,13 @@
+{
+  "implementation": "corrected_calendar_spread_v2",
+  "source_repository": "Lorien-LAB/Future-Spread-Trader",
+  "source_commit": "f7bff2b90087ea85a38449aec878c53e3d0bbe68",
+  "source_path": "backtest/strategy/v1-10_Final",
+  "target_path": "backtest",
+  "migration_type": "documented_behavioral_reimplementation_not_bitwise_equivalent",
+  "source_repository_modified": false,
+  "live_modules_modified": false,
+  "legacy_reference_performance_reproduced": false,
+  "real_market_data_included": false,
+  "default_registry_required": false
+}
