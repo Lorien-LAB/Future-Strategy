@@ -13,6 +13,16 @@ from .pipeline import SOURCE_COMMIT, SOURCE_PATH, calibrate, compare, run, sourc
 from .reporting import write_json
 
 
+def positive_workers(value: str) -> int:
+    try:
+        workers = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("workers must be a positive integer") from error
+    if workers < 1:
+        raise argparse.ArgumentTypeError("workers must be a positive integer")
+    return workers
+
+
 def parser() -> argparse.ArgumentParser:
     root = Path(__file__).resolve().parent
     cli = argparse.ArgumentParser(description="Daily commodity calendar-spread research; outputs are not live-trading certification.")
@@ -25,6 +35,7 @@ def parser() -> argparse.ArgumentParser:
         command.add_argument("--quiet", action="store_true")
         if name != "validate":
             command.add_argument("--output", type=Path, required=True)
+            command.add_argument("--workers", type=positive_workers, default=1)
         if name == "run":
             command.add_argument("--models", type=Path)
             command.add_argument("--origins", type=Path)
@@ -95,7 +106,7 @@ def main(argv=None) -> int:
                     raise FileExistsError(args.output)
                 paths = (*data.paths, args.specs, args.config)
                 before, code = file_hashes(paths), source_hash()
-                result = calibrate(data, specs, config, progress=not args.quiet)
+                result = calibrate(data, specs, config, progress=not args.quiet, workers=args.workers)
                 if file_hashes(paths) != before or source_hash() != code:
                     raise RuntimeError("calibration inputs changed during execution")
                 write_json(args.output, result)
@@ -104,7 +115,7 @@ def main(argv=None) -> int:
                 bundle = json.loads(args.models.read_text(encoding="utf-8")) if args.models else None
                 inputs = [args.config, args.specs] + ([args.models] if args.models else []) + ([args.origins] if args.origins else [])
                 result = run(data, specs, config, args.output, bundle=bundle, origins=read_origins(args.origins),
-                             extra_inputs=inputs, progress=not args.quiet)
+                             extra_inputs=inputs, progress=not args.quiet, workers=args.workers)
         print(json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False))
         return 0
     except Exception as error:

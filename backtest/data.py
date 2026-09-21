@@ -93,6 +93,16 @@ class MarketData:
     def get(self, day: str, product: str, contract: str) -> Bar | None:
         return self.by_day.get(day, {}).get(product, {}).get(contract)
 
+    def product_view(self, product: str) -> "MarketData":
+        """Product-only payload with the unchanged global observation clock."""
+        view = MarketData(())
+        view.by_day = {day: {product: dict(rows[product])} if product in rows else {}
+                       for day, rows in self.by_day.items()}
+        view.days = self.days
+        view.products = (product,) if product in self.products else ()
+        view.paths = self.paths
+        return view
+
     def rows(self, start: str, end: str, product: str | None = None) -> list[Bar]:
         return [bar for day in self.days if start <= day < end
                 for name, contracts in sorted(self.by_day[day].items()) if product is None or name == product
@@ -101,7 +111,13 @@ class MarketData:
     def prefix_hash(self, end: str, product: str | None = None) -> str:
         key = (end, product)
         if key not in self._prefix_hashes:
-            self._prefix_hashes[key] = digest([asdict(bar) for bar in self.rows("0001-01-01", end, product)])
+            self._prefix_hashes[key] = digest([
+                {"day": bar.day, "product": bar.product, "contract": bar.contract,
+                 "open": bar.open, "close": bar.close, "high": bar.high, "low": bar.low,
+                 "settlement": bar.settlement, "volume": bar.volume, "open_interest": bar.open_interest,
+                 "can_buy_open": bar.can_buy_open, "can_sell_open": bar.can_sell_open,
+                 "identity_source": bar.identity_source}
+                for bar in self.rows("0001-01-01", end, product)])
         return self._prefix_hashes[key]
 
 

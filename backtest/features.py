@@ -1,9 +1,12 @@
-"""Pure left-window features; no file reads, outcome labels, or shared caches."""
+"""Causal left-window features and fit-local history reuse; no outcome labels."""
 from __future__ import annotations
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 import math
 from statistics import fmean, pstdev
 from .config import Config
+from .contracts import PairSelector
+from .data import MarketData
 from .domain import Bar, Features, Model, Pair, positive
 
 
@@ -96,3 +99,66 @@ class PairHistory:
                         volatility_ratio(self.near, self.far, config.vr_window, config.vr_minimum_returns),
                         abs(ncl - fcl) if ncl is not None and fcl is not None else None,
                         direction, scale, efficiency)
+
+
+@dataclass(frozen=True, slots=True)
+class _HistoryPrefix(Sequence):
+    """Read-only causal view: retain a segment once, never expose its later rows."""
+    values: list
+    length: int
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return [self.values[i] for i in range(*index.indices(self.length))]
+        if index < 0:
+            index += self.length
+        if not 0 <= index < self.length:
+            raise IndexError(index)
+        return self.values[index]
+
+
+class PreparedHistory:
+    """One fit's product/calendar histories, sharing append-only segment storage.
+
+    Selection and numerical features use the ordinary implementations. Each day's
+    view is length-bounded even while its segment continues to grow. Storage is
+    linear in observations, plus lazily requested (day, feature-parameter) results;
+    target/stop choices share results. The owning fit releases the whole cache.
+    MarketData must remain unchanged during a fit, as for its prefix hash cache.
+    """
+    def __init__(self, data: MarketData, config: Config, product: str) -> None:
+        self.data, self.config, self.product = data, config, product
+        self._histories: dict[str, PairHistory] = {}
+        self._snapshots: dict[tuple, Features | None] = {}
+        selector, history = PairSelector(config), PairHistory()
+        for day in data.days:
+            if day >= config.end_exclusive:
+                break
+            bars = data.by_day[day].get(product, {})
+            pair = selector.update(day, product, bars)
+            if pair != history.pair:
+                # update() clears lists on a boundary; retain older segment buffers.
+                history = PairHistory()
+            history.update(day, pair, bars)
+            self._histories[day] = PairHistory(history.pair, history.segment_id,
+                *(_HistoryPrefix(values, len(values)) for values in
+                  (history.days, history.near, history.far, history.spread, history.normalized)))
+
+    def validate(self, data: MarketData, config: Config, product: str | None) -> None:
+        if data is not self.data or config != self.config or product != self.product:
+            raise ValueError("prepared history does not match data/config/product/cutoff")
+
+    def pair(self, day: str) -> Pair | None:
+        return self._histories[day].pair
+
+    def snapshot(self, day: str, model: Model) -> Features | None:
+        # All model fields consumed by PairHistory.snapshot, including MR sigma.
+        key = (day, model.family, model.window, model.sigma, model.breakout,
+               model.efficiency, model.buffer)
+        if key not in self._snapshots:
+            self._snapshots[key] = self._histories[day].snapshot(
+                model, self.data.by_day[day].get(self.product, {}), self.config)
+        return self._snapshots[key]

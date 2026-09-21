@@ -14,7 +14,7 @@ from .data import MarketData, SpecBook, file_hashes
 from .domain import Model, digest
 from .engine import Engine, SimulationError
 from .reporting import charts, report, write_csv, write_engine, write_json
-from .training import fit_cost_schedule, fit_schedule
+from .training import fit_cost_schedule, fit_schedule, validate_workers
 
 SOURCE_REPOSITORY = "Lorien-LAB/Future-Spread-Trader"
 SOURCE_COMMIT = "f7bff2b90087ea85a38449aec878c53e3d0bbe68"
@@ -34,8 +34,9 @@ def calibration_config_hash(config: Config) -> str:
     return digest(values)
 
 
-def calibrate(data: MarketData, specs: SpecBook, config: Config, *, progress: bool = True) -> dict:
-    models, training_audit = fit_schedule(data, specs, config, progress=progress)
+def calibrate(data: MarketData, specs: SpecBook, config: Config, *, progress: bool = True,
+              workers: int = 1) -> dict:
+    models, training_audit = fit_schedule(data, specs, config, progress=progress, workers=workers)
     thresholds, cost_audit = fit_cost_schedule(data, specs, config, models, progress=progress)
     return {"schema": SCHEMA, "version": __version__, "source_hash": source_hash(),
             "calibration_config_hash": calibration_config_hash(config),
@@ -105,7 +106,8 @@ def limitations(config: Config, data: MarketData) -> list[str]:
 
 def run(data: MarketData, specs: SpecBook, config: Config, output: str | Path, *,
         bundle: dict | None = None, origins: set | None = None,
-        extra_inputs=(), progress: bool = True) -> dict:
+        extra_inputs=(), progress: bool = True, workers: int = 1) -> dict:
+    validate_workers(workers)
     output = Path(output).resolve()
     if output.exists():
         raise FileExistsError(f"output exists; select a new run directory: {output}")
@@ -120,7 +122,7 @@ def run(data: MarketData, specs: SpecBook, config: Config, output: str | Path, *
             raise ValueError("SpecBook retrospective policy differs from Config")
         if not any(config.evaluation_start <= day < config.end_exclusive for day in data.days):
             raise ValueError("no observations in the requested evaluation interval")
-        bundle = calibrate(data, specs, config, progress=progress) if bundle is None else bundle
+        bundle = calibrate(data, specs, config, progress=progress, workers=workers) if bundle is None else bundle
         models, thresholds = unpack_models(bundle, data, specs, config)
         write_json(working / "models.json", bundle)
         write_csv(working / "training_selection.csv", bundle["training_audit"])

@@ -14,6 +14,8 @@ class Ledger:
         self.closed: list[dict] = []
         self.total_fees = 0.0
         self.resize_count = 0
+        self._reconciled_count = 0
+        self._reconciled_pnl = 0.0
 
     @property
     def margin(self) -> float:
@@ -116,12 +118,26 @@ class Ledger:
                                 "model_id": position.signal.model.model_id})
             del self.positions[product]
 
-    def assert_reconciled(self) -> None:
-        expected = self.initial_equity + sum(event["net_pnl"] for event in self.events)
+    def assert_reconciled(self, *, incremental: bool = False) -> None:
+        """Audit the journal; incremental mode requires append-only historical entries.
+
+        Manual edits to earlier event dictionaries require the default full audit.
+        The engine only appends and performs a full audit before reporting success.
+        """
+        if len(self.events) < self._reconciled_count:
+            raise RuntimeError("ledger journal was truncated after reconciliation")
+        if incremental:
+            pnl = self._reconciled_pnl
+            for index in range(self._reconciled_count, len(self.events)):
+                pnl += self.events[index]["net_pnl"]
+        else:
+            pnl = sum(event["net_pnl"] for event in self.events)
+        expected = self.initial_equity + pnl
         if not math.isclose(self.equity, expected, rel_tol=1e-10, abs_tol=1e-6):
             raise RuntimeError("account equity does not reconcile with the ledger")
         if not math.isfinite(self.equity) or self.equity <= 0:
             raise RuntimeError("non-positive account equity; history retained")
+        self._reconciled_count, self._reconciled_pnl = len(self.events), pnl
 
     def open_positions(self) -> list[dict]:
         return [{"product": product, "quantity": p.quantity, "entry_date": p.entry_date,

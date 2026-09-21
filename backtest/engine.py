@@ -11,7 +11,7 @@ from .config import Config
 from .contracts import PairSelector, delivery_guard, expired
 from .data import MarketData, SpecBook
 from .domain import LifeCycle, Model, Pair, PendingEntry, Signal, positive
-from .features import PairHistory
+from .features import PairHistory, PreparedHistory
 from .gates import F25History, at_open
 from .ledger import Ledger
 from .strategy import observe_exit
@@ -22,13 +22,20 @@ class SimulationError(RuntimeError):
         super().__init__(message)
         self.engine = engine
 
+    def __reduce__(self):
+        return type(self), (str(self), self.engine)
+
 
 class Engine:
     def __init__(self, data: MarketData, specs: SpecBook, config: Config,
                  models: Mapping[int, Mapping[str, Model]], *, cost_bps: float,
                  cost_thresholds: Mapping[int, float | None] | None = None,
                  origins: set | None = None, training: bool = False,
-                 gates_enabled: bool = True, product: str | None = None) -> None:
+                 gates_enabled: bool = True, product: str | None = None,
+                 prepared: PreparedHistory | None = None) -> None:
+        if prepared is not None:
+            prepared.validate(data, config, product)
+        self.prepared = prepared
         self.data, self.specs, self.config = data, specs, config
         self.models, self.cost_bps = models, cost_bps
         self.thresholds = dict(cost_thresholds or {})
@@ -235,9 +242,11 @@ class Engine:
         pairs = {}
         for product in self.products:
             bars = self.data.by_day[day].get(product, {})
-            pair = self.selectors[product].update(day, product, bars)
+            pair = (self.prepared.pair(day) if self.prepared is not None else
+                    self.selectors[product].update(day, product, bars))
             pairs[product] = pair
-            self.histories[product].update(day, pair, bars)
+            if self.prepared is None:
+                self.histories[product].update(day, pair, bars)
         if not active:
             return
         for product, life in sorted(self.lives.items()):
@@ -267,7 +276,8 @@ class Engine:
                 raise ValueError("model deployed before its training cutoff")
             if not self.training and day >= self.config.mr_only_from and model.family != "mean_reversion":
                 continue
-            snapshot = self.histories[product].snapshot(model, self.data.by_day[day].get(product, {}), self.config)
+            snapshot = (self.prepared.snapshot(day, model) if self.prepared is not None else
+                        self.histories[product].snapshot(model, self.data.by_day[day].get(product, {}), self.config))
             if snapshot is None:
                 continue
             snapshot = self.factor.feature(snapshot)
@@ -294,7 +304,7 @@ class Engine:
                     self._observe_marks(day, "close")
                     self.phases.append({"date": day, "phase": "close", "equity": self.ledger.equity,
                                         "stale_products": []})
-                    self.ledger.assert_reconciled()
+                    self.ledger.assert_reconciled(incremental=True)
                     # Calibration is a fully-invested margin-return index, not a broker account.
                     if not self.training and self.ledger.free_collateral < -1e-5:
                         raise RuntimeError("margin shortfall: broker liquidation is not modeled; stop with state")
@@ -306,6 +316,7 @@ class Engine:
                                        "fees": self.ledger.total_fees - before_fees,
                                        "existing_resize_count": self.ledger.resize_count - before_resize})
                 self._close(day, index, active=active)
+            self.ledger.assert_reconciled()
             self.status = "COMPLETE_WITH_OPEN_STATE" if self.ledger.positions or self.pending else "COMPLETE"
             return self
         except Exception as error:
