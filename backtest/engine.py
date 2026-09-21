@@ -22,6 +22,9 @@ class SimulationError(RuntimeError):
         super().__init__(message)
         self.engine = engine
 
+    def __reduce__(self):
+        return type(self), (str(self), self.engine)
+
 
 class Engine:
     def __init__(self, data: MarketData, specs: SpecBook, config: Config,

@@ -93,6 +93,16 @@ class MarketData:
     def get(self, day: str, product: str, contract: str) -> Bar | None:
         return self.by_day.get(day, {}).get(product, {}).get(contract)
 
+    def product_view(self, product: str) -> "MarketData":
+        """Product-only payload with the unchanged global observation clock."""
+        view = MarketData(())
+        view.by_day = {day: {product: dict(rows[product])} if product in rows else {}
+                       for day, rows in self.by_day.items()}
+        view.days = self.days
+        view.products = (product,) if product in self.products else ()
+        view.paths = self.paths
+        return view
+
     def rows(self, start: str, end: str, product: str | None = None) -> list[Bar]:
         return [bar for day in self.days if start <= day < end
                 for name, contracts in sorted(self.by_day[day].items()) if product is None or name == product

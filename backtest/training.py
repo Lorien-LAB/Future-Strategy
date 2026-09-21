@@ -1,8 +1,12 @@
 """Annual parameter fitting and cost calibration on strictly historical replays."""
 from __future__ import annotations
 from dataclasses import asdict, replace
+from concurrent.futures import ProcessPoolExecutor
+from contextlib import ExitStack
 from itertools import product as cartesian_product
 import math
+import multiprocessing
+from time import perf_counter
 from .config import Config
 from .contracts import adaptive_window, training_segment_lengths
 from .data import MarketData, SpecBook
@@ -94,22 +98,50 @@ def fit_product(data: MarketData, specs: SpecBook, config: Config, name: str, ye
     return (best_model, observations, audit) if reason == "selected" else (None, [], audit)
 
 
-def fit_schedule(data: MarketData, specs: SpecBook, config: Config, *, progress: bool = True):
+def validate_workers(workers: int) -> None:
+    if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
+        raise ValueError("workers must be a positive integer")
+
+
+def _fit_families(data, specs, config, name, year):
+    return [fit_product(data, specs, config, name, year, family)
+            for family in families(name, f"{year}-01-01", config)]
+
+
+def fit_schedule(data: MarketData, specs: SpecBook, config: Config, *, progress: bool = True,
+                 workers: int = 1):
+    validate_workers(workers)
+    # A single pool spans years, but annual aggregation and cost selection stay ordered.
+    with ExitStack() as stack:
+        executor = (stack.enter_context(ProcessPoolExecutor(
+            max_workers=min(workers, len(data.products)), mp_context=multiprocessing.get_context("spawn")))
+                    if workers > 1 and data.products else None)
+        return _fit_schedule(data, specs, config, progress=progress, executor=executor)
+
+
+def _fit_schedule(data, specs, config, *, progress, executor):
     models: dict[int, dict[str, Model]] = {}
     audit = []
+    started = perf_counter()
     years = range(int(config.source_start[:4]), int(config.end_exclusive[:4]) + 1)
     for year in years:
         deployment = f"{year}-01-01"
         if deployment >= config.end_exclusive:
             continue
         selected, observations = {}, []
-        for name in data.products:
+        futures = ([executor.submit(_fit_families, data.product_view(name), specs, config, name, year)
+                    for name in data.products] if executor is not None else None)
+        for index, name in enumerate(data.products):
             candidates = []
-            for family in families(name, deployment, config):
-                model, features, row = fit_product(data, specs, config, name, year, family)
+            results = (futures[index].result() if futures is not None else
+                       _fit_families(data, specs, config, name, year))
+            for model, features, row in results:
                 audit.append(row)
                 if model is not None:
                     candidates.append((model, features, row))
+            if progress:
+                print(f"[calibrate] {year}: {index + 1}/{len(data.products)} products completed; "
+                      f"elapsed {perf_counter() - started:.1f}s", flush=True)
             if not candidates:
                 continue
             model, features, row = max(candidates, key=lambda item: item[2]["annualized_return"])
