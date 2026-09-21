@@ -48,6 +48,7 @@ Linux, Python 3.11.16, same machine and input files, separate processes, unprofi
 |---|---:|---:|---:|
 | RB 2023, complete MR500 | 142.470s | 26.647s | 5.35x |
 | RB 2021, complete Trend96 | 19.083s | 4.479s | 4.26x |
+| CU 2023, complete MR500 | 154.054s | 28.414s | 5.42x |
 
 For RB/CU/AU/AG together in 2023, all **2,000 MR candidates** and the ordered annual model/VR aggregation were compared:
 
@@ -59,7 +60,7 @@ For RB/CU/AU/AG together in 2023, all **2,000 MR candidates** and the ordered an
 
 All three complete model dictionaries and ordered training audit rows are exactly equal, including annual VR thresholds. The four-process gain versus optimized one-process execution is 3.33x, not 17.62x; the larger figure combines redundant-work removal and parallelism. Loading times were 5.18s, 4.86s and 4.55s respectively and are excluded from fit time. These are individual controlled runs, not a confidence interval or a verified 69-product end-to-end speedup.
 
-Both comparisons match the full returned model, entry features and training audit exactly. The best candidate audits contain 81 and 53 real training entries respectively; both fail the original worst-year quality gate. These are performance fixtures, not selected profitable strategies.
+The RB comparisons match the full returned results exactly, including best-candidate audits containing 81 and 53 real training entries respectively. Both RB fixtures fail the original worst-year quality gate, so their returned models and feature lists are empty. A separate full CU500 fit **passes** the original quality gate: its selected model, all **136 nonempty real entry-feature rows**, and entire training audit match exactly. These fixtures verify execution equivalence; they are not an independent profitability evaluation.
 
 The original and optimized nonempty synthetic end-to-end workflows also match models apart from the required code-provenance hash. All 39 persisted account/trade CSV/JSON/JSONL outputs across 0/1/2bp are byte-identical, including daily equity, fills, orders, ledger, gate decisions, candidates, allocation events, open positions and final state.
 
