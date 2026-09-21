@@ -101,7 +101,13 @@ class MarketData:
     def prefix_hash(self, end: str, product: str | None = None) -> str:
         key = (end, product)
         if key not in self._prefix_hashes:
-            self._prefix_hashes[key] = digest([asdict(bar) for bar in self.rows("0001-01-01", end, product)])
+            self._prefix_hashes[key] = digest([
+                {"day": bar.day, "product": bar.product, "contract": bar.contract,
+                 "open": bar.open, "close": bar.close, "high": bar.high, "low": bar.low,
+                 "settlement": bar.settlement, "volume": bar.volume, "open_interest": bar.open_interest,
+                 "can_buy_open": bar.can_buy_open, "can_sell_open": bar.can_sell_open,
+                 "identity_source": bar.identity_source}
+                for bar in self.rows("0001-01-01", end, product)])
         return self._prefix_hashes[key]
 
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import date
+from functools import cached_property
 import hashlib
 import json
 import math
@@ -77,7 +78,7 @@ class Spec:
             raise ValueError("invalid margin fraction or missing specification source")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Model:
     product: str
     fit_start: str
@@ -117,12 +118,12 @@ class Model:
         if self.vr_max_date is not None and self.vr_max_date >= self.fit_end:
             raise ValueError("VR calibration crosses fit_end")
 
-    @property
+    @cached_property
     def model_id(self) -> str:
         return digest(asdict(self))[:20]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class Features:
     day: str
     pair: Pair
@@ -139,7 +140,7 @@ class Features:
     trend_scale: float = 0.0
     path_efficiency: float | None = None
 
-    @property
+    @cached_property
     def signal_id(self) -> str:
         return digest({"day": self.day, "pair": asdict(self.pair), "segment": self.segment_id})[:24]
 

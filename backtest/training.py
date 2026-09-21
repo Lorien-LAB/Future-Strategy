@@ -8,7 +8,7 @@ from .contracts import adaptive_window, training_segment_lengths
 from .data import MarketData, SpecBook
 from .domain import Model
 from .engine import Engine, SimulationError
-from .features import quantile
+from .features import PreparedHistory, quantile
 from .metrics import summarize, yearly_returns
 from .strategy import families
 
@@ -49,6 +49,7 @@ def fit_product(data: MarketData, specs: SpecBook, config: Config, name: str, ye
     best_score = -math.inf
     attempts = failures = 0
     fingerprint = data.prefix_hash(end, name)
+    prepared = PreparedHistory(data, fit_config, name)
     for parameters in parameter_grid(family, config):
         attempts += 1
         model = Model(name, start, end, family=family,
@@ -56,7 +57,7 @@ def fit_product(data: MarketData, specs: SpecBook, config: Config, name: str, ye
                       selection_source=config.router, training_fingerprint=fingerprint, **parameters)
         schedule = {y: {name: model} for y in range(year - config.train_years, year)}
         engine = Engine(data, specs, fit_config, schedule, cost_bps=config.training_cost_bps,
-                        training=True, gates_enabled=False, product=name)
+                        training=True, gates_enabled=False, product=name, prepared=prepared)
         try:
             engine.run()
         except SimulationError as error:
