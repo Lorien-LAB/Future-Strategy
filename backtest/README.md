@@ -53,6 +53,11 @@ python -m backtest calibrate --data-root /data/market --specs /data/specs.csv --
 python -m backtest run --data-root /data/market --specs /data/specs.csv --models backtest/runs/models_001.json --output backtest/runs/run_001
 ```
 
+完整网格校准可用 `calibrate` / `run --workers 4` 并行计算独立品种，默认仍为1个进程。
+该参数只控制运行资源，不进入策略配置或改变年度模型、VR汇总顺序、费用阈值和账户回放。
+每完成一个品种会输出进度与累计耗时，`--quiet` 可关闭。
+实测热点、完整网格提速和精确结果对照见 [PERFORMANCE.md](docs/PERFORMANCE.md)。
+
 省略 `--models` 时，`run` 自动校准。`--config` 默认 `backtest/configs/default.json`，`--no-charts` 关闭图表，`--quiet` 隐藏校准进度。模型复用会验证源码、校准配置、每年部署前行情和规格前缀；历史前缀变化必须重新校准。追加未来数据只有在模型年份已有覆盖、配置一致、过去数据未变时才能复用。
 
 ## 4. 输出
